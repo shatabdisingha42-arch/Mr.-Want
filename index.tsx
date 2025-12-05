@@ -39,7 +39,7 @@ const App = () => {
 
     try {
       const stream = await ai.models.generateContentStream({
-        model: "gemini-3-pro-preview",
+        model: "gemini-2.5-flash",
         contents: question,
         config: {
           systemInstruction: "You are Mr. Want. Answer the user's question immediately, concisely, and accurately. Do not use markdown headers or heavy formatting. Just plain, direct text. Maximum efficiency.",
