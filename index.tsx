@@ -5,14 +5,23 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 // Initialize AI Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// Type definition for Web Speech API
+interface IWindow extends Window {
+  webkitSpeechRecognition: any;
+  SpeechRecognition: any;
+}
+
 const App = () => {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [isDone, setIsDone] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -24,6 +33,62 @@ const App = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [answer]);
+
+  const startListening = () => {
+    const w = window as unknown as IWindow;
+    const SpeechRecognition = w.SpeechRecognition || w.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setError("Voice input is not supported in this browser.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setError(null);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      // Auto-focus input after talking so user can press enter
+      inputRef.current?.focus();
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error", event.error);
+      setIsListening(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          // You could handle interim results here if you want real-time typing effect
+          // For now, let's just grab the latest interim as the value
+          setQuestion(event.results[i][0].transcript);
+        }
+      }
+      if (finalTranscript) {
+        setQuestion(finalTranscript);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +172,27 @@ const App = () => {
               autoComplete="off"
             />
             <div style={styles.actionRight}>
+              
+              {!isDone && !isStreaming && (
+                <button
+                  type="button"
+                  onClick={startListening}
+                  style={{
+                    ...styles.iconButton,
+                    color: isListening ? "#ff4444" : "#666",
+                    animation: isListening ? "pulse 1.5s infinite" : "none"
+                  }}
+                  title="Voice Input"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                </button>
+              )}
+
               {isDone ? (
                 <button type="button" onClick={handleReset} style={styles.resetButton}>
                   New
@@ -214,9 +300,22 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
   },
   actionRight: {
-    paddingRight: "12px",
+    paddingRight: "8px",
     display: "flex",
     alignItems: "center",
+    gap: "8px",
+  },
+  iconButton: {
+    width: "32px",
+    height: "32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: 0,
+    transition: "color 0.2s ease",
   },
   submitButton: {
     width: "32px",
@@ -267,6 +366,7 @@ styleSheet.innerText = `
   ::selection { background: #333; color: #fff; }
   @keyframes spin { 100% { transform: rotate(360deg); } }
   @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 `;
 document.head.appendChild(styleSheet);
